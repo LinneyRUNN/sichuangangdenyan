@@ -66,8 +66,19 @@ class SimpleMultiplayer {
         try {
             this.updateStatus('正在创建房间...');
             
-            // 创建PeerJS实例
-            this.peer = new Peer();
+            // 创建PeerJS实例，使用更稳定的配置
+            this.peer = new Peer(null, {
+                host: 'peerjs-server.herokuapp.com',
+                port: 443,
+                path: '/',
+                secure: true,
+                config: {
+                    'iceServers': [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:global.stun.twilio.com:3478' }
+                    ]
+                }
+            });
             
             this.peer.on('open', (id) => {
                 this.roomId = id;
@@ -95,13 +106,61 @@ class SimpleMultiplayer {
             
             this.peer.on('error', (err) => {
                 console.error('PeerJS 错误:', err);
-                alert('创建房间失败: ' + err.message);
+                this.updateStatus('连接失败，尝试备用方案...');
+                this.tryFallbackConnection();
             });
             
         } catch (error) {
             console.error('创建房间失败:', error);
-            alert('创建房间失败: ' + error.message);
+            this.updateStatus('连接失败，尝试备用方案...');
+            this.tryFallbackConnection();
         }
+    }
+    
+    // 备用连接方案
+    tryFallbackConnection() {
+        console.log('尝试使用默认PeerJS服务器...');
+        
+        // 使用默认的PeerJS服务器
+        this.peer = new Peer(null, {
+            debug: 2,
+            config: {
+                'iceServers': [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' }
+                ]
+            }
+        });
+        
+        this.peer.on('open', (id) => {
+            this.roomId = id;
+            this.myPlayerId = `${this.playerName}_${Date.now()}`;
+            
+            // 添加自己到玩家列表
+            this.players = [{
+                id: this.myPlayerId,
+                name: this.playerName,
+                isHost: true,
+                connected: true
+            }];
+            
+            this.updateStatus('房间创建成功！等待其他玩家加入...');
+            document.getElementById('myRoomId').textContent = id;
+            document.getElementById('roomInfo').style.display = 'block';
+            this.updatePlayerCount();
+            
+            console.log('备用连接成功，房间ID:', id);
+        });
+        
+        this.peer.on('connection', (conn) => {
+            this.handleNewConnection(conn);
+        });
+        
+        this.peer.on('error', (err) => {
+            console.error('备用连接也失败:', err);
+            this.updateStatus('网络连接失败，请检查网络或稍后重试');
+            alert('网络连接失败，可能是防火墙或网络环境问题。建议：\n1. 检查网络连接\n2. 尝试关闭防火墙\n3. 使用移动热点测试');
+        });
     }
     
     // 加入房间
@@ -127,7 +186,15 @@ class SimpleMultiplayer {
             this.updateStatus('正在连接房间...');
             
             // 创建PeerJS实例
-            this.peer = new Peer();
+            this.peer = new Peer(null, {
+                debug: 2,
+                config: {
+                    'iceServers': [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:global.stun.twilio.com:3478' }
+                    ]
+                }
+            });
             
             this.peer.on('open', (id) => {
                 this.myPlayerId = `${playerName}_${Date.now()}`;
@@ -155,12 +222,20 @@ class SimpleMultiplayer {
                 
                 conn.on('error', (err) => {
                     console.error('连接失败:', err);
+                    this.updateStatus('连接房间失败，请检查房间ID');
                     alert('连接房间失败: ' + err.message);
                 });
             });
             
+            this.peer.on('error', (err) => {
+                console.error('PeerJS连接失败:', err);
+                this.updateStatus('网络连接失败，请检查网络');
+                alert('网络连接失败，请检查网络连接');
+            });
+            
         } catch (error) {
             console.error('加入房间失败:', error);
+            this.updateStatus('加入房间失败');
             alert('加入房间失败: ' + error.message);
         }
     }
