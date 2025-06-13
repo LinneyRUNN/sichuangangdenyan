@@ -15,6 +15,22 @@ class WebSocketMultiplayer {
         this.setupEventListeners();
         this.playerId = 'player_' + Math.random().toString(36).substr(2, 9);
         console.log('WebSocket多人游戏初始化完成');
+        
+        // 检查localStorage是否可用
+        this.checkLocalStorage();
+    }
+    
+    // 检查localStorage
+    checkLocalStorage() {
+        try {
+            const test = 'test';
+            localStorage.setItem(test, test);
+            localStorage.removeItem(test);
+            console.log('localStorage 可用');
+        } catch (e) {
+            console.error('localStorage 不可用:', e);
+            alert('浏览器存储不可用，可能是隐私模式。请尝试：\n1. 退出隐私模式\n2. 刷新页面\n3. 清除浏览器缓存');
+        }
     }
     
     setupEventListeners() {
@@ -73,12 +89,26 @@ class WebSocketMultiplayer {
             created: Date.now()
         };
         
-        // 保存到本地存储
-        localStorage.setItem(`room_${this.roomCode}`, JSON.stringify(roomData));
-        
-        this.updateStatus('房间创建成功！');
-        this.showRoomInfo();
-        this.startPolling();
+        try {
+            // 保存到本地存储
+            const roomKey = `room_${this.roomCode}`;
+            localStorage.setItem(roomKey, JSON.stringify(roomData));
+            
+            // 验证保存是否成功
+            const saved = localStorage.getItem(roomKey);
+            if (!saved) {
+                throw new Error('保存失败');
+            }
+            
+            console.log('房间创建成功:', roomKey, roomData);
+            this.updateStatus('房间创建成功！');
+            this.showRoomInfo();
+            this.startPolling();
+            
+        } catch (error) {
+            console.error('创建房间失败:', error);
+            alert('创建房间失败，请刷新页面重试');
+        }
     }
     
     // 显示加入房间输入
@@ -101,48 +131,83 @@ class WebSocketMultiplayer {
             return;
         }
         
-        // 检查房间是否存在
-        const roomKey = `room_${roomCode}`;
-        const roomDataStr = localStorage.getItem(roomKey);
-        
-        if (!roomDataStr) {
-            alert('房间不存在，请检查房间号');
-            return;
+        try {
+            // 检查房间是否存在
+            const roomKey = `room_${roomCode}`;
+            console.log('查找房间:', roomKey);
+            
+            // 列出所有localStorage的key进行调试
+            console.log('当前localStorage中的所有房间:');
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('room_')) {
+                    console.log('- ', key);
+                }
+            }
+            
+            const roomDataStr = localStorage.getItem(roomKey);
+            console.log('房间数据:', roomDataStr);
+            
+            if (!roomDataStr) {
+                // 尝试显示可用房间
+                const availableRooms = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('room_')) {
+                        availableRooms.push(key.replace('room_', ''));
+                    }
+                }
+                
+                let message = '房间不存在，请检查房间号';
+                if (availableRooms.length > 0) {
+                    message += '\n\n当前可用房间：' + availableRooms.join(', ');
+                } else {
+                    message += '\n\n当前没有可用房间，请先创建房间';
+                }
+                
+                alert(message);
+                return;
+            }
+            
+            const roomData = JSON.parse(roomDataStr);
+            
+            // 检查房间是否已满
+            if (roomData.players.length >= 3) {
+                alert('房间已满');
+                return;
+            }
+            
+            // 检查是否已在房间中
+            const existingPlayer = roomData.players.find(p => p.name === playerName);
+            if (existingPlayer) {
+                alert('昵称已被使用，请换一个昵称');
+                return;
+            }
+            
+            this.playerName = playerName;
+            this.roomCode = roomCode;
+            this.isHost = false;
+            
+            // 添加玩家到房间
+            roomData.players.push({
+                id: this.playerId,
+                name: playerName,
+                isHost: false,
+                connected: true
+            });
+            
+            // 更新房间数据
+            localStorage.setItem(roomKey, JSON.stringify(roomData));
+            
+            console.log('成功加入房间:', roomData);
+            this.updateStatus('成功加入房间！');
+            this.showRoomInfo();
+            this.startPolling();
+            
+        } catch (error) {
+            console.error('加入房间失败:', error);
+            alert('加入房间失败: ' + error.message);
         }
-        
-        const roomData = JSON.parse(roomDataStr);
-        
-        // 检查房间是否已满
-        if (roomData.players.length >= 3) {
-            alert('房间已满');
-            return;
-        }
-        
-        // 检查是否已在房间中
-        const existingPlayer = roomData.players.find(p => p.name === playerName);
-        if (existingPlayer) {
-            alert('昵称已被使用，请换一个昵称');
-            return;
-        }
-        
-        this.playerName = playerName;
-        this.roomCode = roomCode;
-        this.isHost = false;
-        
-        // 添加玩家到房间
-        roomData.players.push({
-            id: this.playerId,
-            name: playerName,
-            isHost: false,
-            connected: true
-        });
-        
-        // 更新房间数据
-        localStorage.setItem(roomKey, JSON.stringify(roomData));
-        
-        this.updateStatus('成功加入房间！');
-        this.showRoomInfo();
-        this.startPolling();
     }
     
     // 显示房间信息
@@ -183,7 +248,7 @@ class WebSocketMultiplayer {
         this.updatePlayersList(roomData.players);
         
         // 检查游戏状态
-        if (roomData.gameState && roomData.gameState !== this.gameState) {
+        if (roomData.gameState && JSON.stringify(roomData.gameState) !== JSON.stringify(this.gameState)) {
             this.gameState = roomData.gameState;
             this.updateGameUI();
         }
@@ -319,6 +384,11 @@ class WebSocketMultiplayer {
     // 更新游戏UI
     updateGameUI() {
         if (!this.gameState) return;
+        
+        // 显示游戏界面
+        if (document.getElementById('gameContainer').style.display === 'none') {
+            this.showGameContainer();
+        }
         
         // 找到当前玩家
         const myPlayer = this.gameState.players.find(p => p.id === this.playerId);
@@ -545,12 +615,32 @@ class WebSocketMultiplayer {
         
         this.updateStatus('已离开房间');
     }
+    
+    // 调试功能：清除所有房间
+    clearAllRooms() {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('room_')) {
+                keys.push(key);
+            }
+        }
+        keys.forEach(key => localStorage.removeItem(key));
+        console.log('已清除所有房间:', keys);
+    }
 }
 
 // 全局函数
 function leaveWsRoom() {
     if (window.websocketGame) {
         window.websocketGame.leaveRoom();
+    }
+}
+
+// 调试函数
+function clearAllRooms() {
+    if (window.websocketGame) {
+        window.websocketGame.clearAllRooms();
     }
 }
 
