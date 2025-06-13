@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>四川干瞪眼 - 简单联机版</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+</head>
+<body>
+    <!-- 房间选择界面 -->
+    <div id="roomSelection" class="room-selection">
+        <div class="room-panel">
+            <h1>四川干瞪眼 - 简单联机版</h1>
+            <div class="room-form">
+                <input type="text" id="playerName" placeholder="输入您的昵称" maxlength="10">
+                <div class="room-options">
+                    <button id="createRoomBtn" class="action-btn">创建房间（当房主）</button>
+                    <div class="join-room">
+                        <input type="text" id="roomId" placeholder="输入房间ID加入游戏" maxlength="20">
+                        <button id="joinRoomBtn" class="action-btn">加入房间</button>
+                    </div>
+                </div>
+            </div>
+            <div class="room-info">
+                <p>• 房主创建房间后会得到房间ID</p>
+                <p>• 朋友输入房间ID即可加入</p>
+                <p>• 支持2-3人游戏</p>
+                <p>• 无需注册，点对点连接</p>
+            </div>
+            <div id="connectionStatus" class="connection-status">
+                <p>连接状态: <span id="statusText">等待操作...</span></p>
+                <div id="roomInfo" style="display: none;">
+                    <p>房间ID: <span id="myRoomId" style="color: #ffd700; font-weight: bold;"></span></p>
+                    <p>已连接玩家: <span id="connectedPlayers">1</span>/3</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏界面 -->
+    <div id="gameContainer" class="game-container" style="display: none;">
+        <div class="header">
+            <h1>四川干瞪眼</h1>
+            <div class="game-info">
+                <div class="room-display">房间: <span id="currentRoom">------</span></div>
+                <div class="deck-count">剩余牌数: <span id="deckCount">52</span></div>
+                <div class="current-player">当前玩家: <span id="currentPlayer">等待中...</span></div>
+            </div>
+        </div>
+
+        <!-- 玩家区域保持不变 -->
+        <div class="player-area player2">
+            <div class="player-info">
+                <span class="player-name" id="player2Name">玩家2</span>
+                <span class="card-count">牌数: <span id="player2CardCount">5</span></span>
+                <span class="online-status" id="player2Status">等待中</span>
+            </div>
+            <div class="hand" id="player2Hand">
+                <!-- 玩家2手牌 -->
+            </div>
+        </div>
+
+        <div class="player-area player1">
+            <div class="player-info">
+                <span class="player-name" id="player1Name">玩家1</span>
+                <span class="card-count">牌数: <span id="player1CardCount">6</span></span>
+                <span class="online-status" id="player1Status">等待中</span>
+            </div>
+            <div class="hand vertical" id="player1Hand">
+                <!-- 玩家1手牌 -->
+            </div>
+        </div>
+
+        <!-- 游戏中央区域 -->
+        <div class="game-center">
+            <div class="played-cards">
+                <div class="last-play">
+                    <div class="last-play-label">上次出牌:</div>
+                    <div id="lastPlayedCards" class="cards-display"></div>
+                    <div class="last-player">玩家: <span id="lastPlayer">-</span></div>
+                </div>
+            </div>
+            
+            <div class="game-actions">
+                <button id="playCardsBtn" class="action-btn" disabled>出牌</button>
+                <button id="passBtn" class="action-btn">不要</button>
+                <button id="newGameBtn" class="action-btn">新游戏</button>
+                <button id="leaveRoomBtn" class="action-btn leave-btn">离开房间</button>
+            </div>
+            
+            <div class="game-hint">
+                <p>提示：当前轮到 <span id="currentPlayerHint" style="color: #ffd700; font-weight: bold;">等待中...</span> 出牌</p>
+                <p id="gameStatus">等待其他玩家加入...</p>
+            </div>
+        </div>
+
+        <div class="player-area player-human">
+            <div class="player-info">
+                <span class="player-name" id="player3Name">玩家3</span>
+                <span class="card-count">牌数: <span id="playerCardCount">5</span></span>
+                <span class="online-status" id="player3Status">等待中</span>
+            </div>
+            <div class="hand" id="playerHand">
+                <!-- 玩家3手牌 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏结果弹窗 -->
+    <div id="gameResultModal" class="modal">
+        <div class="modal-content">
+            <h2 id="gameResultTitle">游戏结束</h2>
+            <p id="gameResultMessage"></p>
+            <button id="restartBtn" class="action-btn">重新开始</button>
+        </div>
+    </div>
+
+    <!-- 游戏规则说明 -->
+    <div class="rules-panel">
+        <button id="rulesToggle" class="rules-toggle">规则说明</button>
+        <div id="rulesContent" class="rules-content">
+            <h3>四川干瞪眼规则</h3>
+            <ul>
+                <li>三人打一副牌，没有大小王</li>
+                <li>牌大小：2最大，A第二大，K、Q、J...4，3最小</li>
+                <li>赢家抓6张牌先出，其余两人各5张</li>
+                <li>单牌只能被相应的对子和比大一张的牌接还有2和炸弹接</li>
+                <li>对子只能被比大一张的对子、2、炸弹接</li>
+                <li>三张及以上为顺子或炸弹</li>
+                <li>2不能被任何牌接</li>
+                <li>无人接牌时，每人摸一张，出牌者继续</li>
+                <li>先出完牌者获胜</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+    <script src="simple-multiplayer.js"></script>
+</body>
+</html> 
